@@ -263,4 +263,137 @@ If you write `import aws_cdk as cdk`, you must use `cdk.Stack` not `aws_cdk.Stac
 
 ---
 
-*Steps 4+ coming soon...*
+---
+
+## Step 4 — Write the Lambda Function (`src/lambda/edi_parser.py`)
+
+### What this Lambda does
+Triggered when an EDI file lands in the raw S3 bucket.
+Reads the file, parses it into individual claims, sends each claim as a JSON message to SQS.
+
+### Create the file
+```bash
+touch src/lambda/edi_parser.py
+```
+
+### Block 1 — Imports
+```python
+import json
+import os
+import boto3
+```
+
+| Import | Why |
+|---|---|
+| `json` | Converts parsed EDI data (Python dict) into a JSON string for SQS |
+| `os` | Reads environment variables — never hardcode bucket names or queue URLs |
+| `boto3` | AWS SDK for Python — how Lambda talks to S3 and SQS |
+
+### Block 2 — EDI Parser Function
+
+#### What is X12 837?
+X12 837 is the standard file format for healthcare claims in the US (HIPAA-mandated).
+A raw EDI file looks like:
+```
+ISA*00*...*ZZ*SENDER*ZZ*RECEIVER~
+CLM*CLAIM001*500.00***11:B:1~
+NM1*IL*1*SMITH*JOHN~
+NM1*85*2*GENERAL HOSPITAL~
+SV1*HC:99213*150.00*UN*1~
+SE*10*0001~
+```
+
+| Symbol | Meaning |
+|---|---|
+| `~` | Segment terminator — marks end of each segment (like a line ending) |
+| `*` | Element separator — separates fields within a segment (like a comma in CSV) |
+| `CLM` | Claim segment — contains claim ID and total amount |
+| `NM1*IL` | Patient name (`IL` = Insured/Patient) |
+| `NM1*85` | Provider name (`85` = Billing Provider) |
+| `SV1` | Service line — procedure code, charge, units |
+| `SE` | End of transaction — signals one complete claim |
+
+**Why split on `~` first, then `*`?**
+EDI files are not line-by-line. `~` marks segment ends. Inside each segment, `*` separates fields.
+Always parse in two steps: segments first, elements second.
+
+```python
+def parse_edi_837(edi_text):
+    claims = []
+    segments = edi_text.strip().split("~")
+
+    claim = {}
+    for segment in segments:
+        elements = segment.strip().split("*")
+        tag = elements[0]
+
+        if tag == "CLM":
+            claim["claim_id"] = elements[1]
+            claim["claim_amount"] = elements[2]
+
+        elif tag == "NM1" and elements[1] == "IL":
+            claim["patient_last_name"] = elements[3]
+            claim["patient_first_name"] = elements[4]
+
+        elif tag == "NM1" and elements[1] == "85":
+            claim["provider_last_name"] = elements[3]
+            claim["provider_first_name"] = elements[4]
+
+        elif tag == "SV1":
+            claim["service_code"] = elements[1].split(":")[1]
+            claim["service_charge"] = elements[2]
+            claim["service_units"] = elements[4]
+
+        elif tag == "SE":
+            if claim:
+                claims.append(claim)
+                claim = {}
+
+    return claims
+```
+
+### Block 3 — Lambda Handler
+```python
+def lambda_handler(event, context):
+    s3 = boto3.client("s3")
+    sqs = boto3.client("sqs")
+
+    queue_url = os.environ["SQS_QUEUE_URL"]
+
+    for record in event["Records"]:
+        bucket = record["s3"]["bucket"]["name"]
+        key = record["s3"]["object"]["key"]
+
+        response = s3.get_object(Bucket=bucket, Key=key)
+        edi_text = response["Body"].read().decode("utf-8")
+
+        claims = parse_edi_837(edi_text)
+
+        for claim in claims:
+            sqs.send_message(
+                QueueUrl=queue_url,
+                MessageBody=json.dumps(claim),
+            )
+
+    return {"statusCode": 200, "body": f"Processed {len(claims)} claims"}
+```
+
+| Line | Why |
+|---|---|
+| `boto3.client("s3")` | Creates an S3 client — connection to S3 |
+| `boto3.client("sqs")` | Creates an SQS client — connection to SQS |
+| `os.environ["SQS_QUEUE_URL"]` | Reads queue URL from environment variable — never hardcode |
+| `event["Records"]` | Lambda receives a list of S3 events — one per uploaded file |
+| `record["s3"]["bucket"]["name"]` | Which bucket the file landed in |
+| `record["s3"]["object"]["key"]` | Filename/path of the uploaded EDI file |
+| `s3.get_object(...)` | Downloads the EDI file content from S3 |
+| `.read().decode("utf-8")` | Converts file bytes into a Python string |
+| `json.dumps(claim)` | Converts Python dict to JSON string — SQS only accepts strings |
+
+**Why does Lambda receive `event["Records"]` as a list?**
+If multiple EDI files land in S3 at the same time, AWS batches them into one Lambda invocation.
+Looping through `Records` ensures none are missed.
+
+---
+
+*Steps 5+ coming soon...*
