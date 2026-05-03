@@ -1,0 +1,112 @@
+[
+  {
+    "claim_id": 1,
+    "file": "test_data/claim_001.edi",
+    "provider_npi": "0987654321",
+    "patient_age_group": "76+",
+    "cpt_code": "99213",
+    "diagnosis_code": "I10",
+    "units": 3,
+    "charge": 450.0,
+    "is_anomaly": false
+  },
+  {
+    "claim_id": 2,
+    "file": "test_data/claim_002.edi",
+    "provider_npi": "0987654321",
+    "patient_age_group": "31-45",
+    "cpt_code": "80053",
+    "diagnosis_code": "I10",
+    "units": 3,
+    "charge": 285.0,
+    "is_anomaly": false
+  },
+  {
+    "claim_id": 3,
+    "file": "test_data/claim_003.edi",
+    "provider_npi": "1122334455",
+    "patient_age_group": "31-45",
+    "cpt_code": "99285",
+    "diagnosis_code": "M54.5",
+    "units": 3,
+    "charge": 21354.88,
+    "is_anomaly": true
+  },
+  {
+    "claim_id": 4,
+    "file": "test_data/claim_004.edi",
+    "provider_npi": "1122334455",
+    "patient_age_group": "76+",
+    "cpt_code": "70553",
+    "diagnosis_code": "J18.9",
+    "units": 3,
+    "charge": 6600.0,
+    "is_anomaly": false
+  },
+  {
+    "claim_id": 5,
+    "file": "test_data/claim_005.edi",
+    "provider_npi": "1122334455",
+    "patient_age_group": "46-60",
+    "cpt_code": "71046",
+    "diagnosis_code": "I10",
+    "units": 2,
+    "charge": 360.0,
+    "is_anomaly": false
+  },
+  {
+    "claim_id": 6,
+    "file": "test_data/claim_006.edi",
+    "provider_npi": "1234567890",
+    "patient_age_group": "76+",
+    "cpt_code": "99213",
+    "diagnosis_code": "J06.9",
+    "units": 1,
+    "charge": 150.0,
+    "is_anomaly": false
+  },
+  {
+    "claim_id": 7,
+    "file": "test_data/claim_007.edi",
+    "provider_npi": "0987654321",
+    "patient_age_group": "46-60",
+    "cpt_code": "99214",
+    "diagnosis_code": "I10",
+    "units": 1,
+    "charge": 1137.69,
+    "is_anomaly": true
+  },
+  {
+    "claim_id": 8,
+    "file": "test_data/claim_008.edi",
+    "provider_npi": "0987654321",
+    "patient_age_group": "76+",
+    "cpt_code": "99213",
+    "diagnosis_code": "M54.5",
+    "units": 3,
+    "charge": 450.0,
+    "is_anomaly": false
+  },
+  {
+    "claim_id": 9,
+    "file": "test_data/claim_009.edi",
+    "provider_npi": "0987654321",
+    "patient_age_group": "31-45",
+    "cpt_code": "99285",
+    "diagnosis_code": "J06.9",
+    "units": 3,
+    "charge": 2550.0,
+    "is_anomaly": false
+  },
+  {
+    "claim_id": 10,
+    "file": "test_data/claim_010.edi",
+    "provider_npi": "1122334455",
+    "patient_age_group": "46-60",
+    "cpt_code": "93000",
+    "diagnosis_code": "M54.5",
+    "units": 3,
+    "charge": 225.0,
+    "is_anomaly": false
+  }
+]

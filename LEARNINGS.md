@@ -396,4 +396,69 @@ Looping through `Records` ensures none are missed.
 
 ---
 
-*Steps 5+ coming soon...*
+---
+
+## Step 5 — Create 10 Synthetic Test Claims (`src/lambda/generate_test_claims.py`)
+
+### What this script does
+Generates 10 fake but realistic EDI 837 claim files for testing.
+No real patient data — everything is made up but follows correct healthcare formats.
+
+### Reference data used
+
+| Variable | What it represents |
+|---|---|
+| `PROVIDERS` | Fake doctors with 10-digit NPI numbers (HIPAA standard) |
+| `PATIENTS` | Fake patients with `age_group` instead of exact DOB — avoids PHI |
+| `CPT_CODES` | Current Procedural Terminology — standard US medical procedure codes |
+| `DIAGNOSIS_CODES` | ICD-10 codes — standard diagnosis codes (e.g. `I10` = hypertension) |
+| `typical_charge` | Realistic dollar amounts per procedure |
+
+**Why `age_group` instead of exact age?**
+Bucketing ages (`31-45`) reduces sensitivity while still being useful for anomaly detection.
+
+### How anomalies are injected
+```python
+anomaly = i in [3, 7]          # claims 3 and 7 are anomalies
+charge = charge * random.uniform(5, 10)  # anomaly = 5-10x normal charge
+```
+Claims 3 and 7 are hardcoded as anomalies so we can verify the ML model finds them later.
+This is called **labeled data** — you know the ground truth to measure model accuracy.
+
+### Output
+- `test_data/claim_001.edi` through `claim_010.edi` — EDI 837 formatted files
+- `test_data/manifest.json` — summary of all 10 claims with fields and anomaly flag
+
+### Actual results
+| Claim | CPT | Charge | Anomaly |
+|---|---|---|---|
+| 1 | 99213 Office visit | $450 | No |
+| 2 | 80053 Metabolic panel | $285 | No |
+| 3 | 99285 Emergency dept | **$21,354** | **Yes** |
+| 4 | 70553 MRI brain | $6,600 | No |
+| 5 | 71046 Chest X-ray | $360 | No |
+| 6 | 99213 Office visit | $150 | No |
+| 7 | 99214 Office visit | **$1,137** | **Yes** |
+| 8 | 99213 Office visit | $450 | No |
+| 9 | 99285 Emergency dept | $2,550 | No |
+| 10 | 93000 Electrocardiogram | $225 | No |
+
+Claims 3 and 7 are 5–10x higher than normal — the pattern the ML model will learn to detect.
+
+### Key Python concepts used
+
+**`os.makedirs(output_dir, exist_ok=True)`**
+Creates a folder if it doesn't exist. `exist_ok=True` means no error if it already exists.
+
+**`f"{i:03d}"`**
+Zero-padded number formatting. `i=1` becomes `001`, `i=10` becomes `010`.
+Makes filenames sort correctly in directory listings.
+
+**`if __name__ == "__main__"`**
+Only runs the script when executed directly (`python script.py`).
+Does NOT run when the file is imported by another script.
+Standard Python pattern for any script that can also be used as a module.
+
+---
+
+*Steps 6+ coming soon...*
