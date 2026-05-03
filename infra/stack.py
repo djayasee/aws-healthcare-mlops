@@ -1,12 +1,14 @@
 import aws_cdk as cdk
-from aws_cdk import (
-    Stack,aws_s3 as s3,
-    aws_sqs as sqs,
-    aws_kms as kms,
-    aws_iam as iam,
-    Duration,
-    RemovalPolicy,
-        )
+from aws_cdk import (                                                                                                            
+      aws_s3 as s3,
+      aws_sqs as sqs,                                                                                                              
+      aws_kms as kms,
+      aws_iam as iam,
+      aws_lambda as lambda_,
+      aws_s3_notifications as s3n,
+      Duration,
+      RemovalPolicy,
+  )
 from constructs import Construct
 
 class EdiAnomalyStack(cdk.Stack):
@@ -73,7 +75,7 @@ class EdiAnomalyStack(cdk.Stack):
         self.raw_bucket.grant_read(self.parser_lambda_role)
         self.processed_bucket.grant_write(self.parser_lambda_role)
         self.encryption_key.grant_encrypt_decrypt(self.parser_lambda_role)
-        self.queue.grant_consume_messages(self.parser_lambda_role)
+        self.queue.grant_send_messages(self.parser_lambda_role)
 
         self.anomaly_lambda_role = iam.Role(
               self,
@@ -94,3 +96,21 @@ class EdiAnomalyStack(cdk.Stack):
         cdk.CfnOutput(self, "QueueUrl", value=self.queue.queue_url)                                                              
         cdk.CfnOutput(self, "DlqUrl", value=self.dlq.queue_url)                                                                  
         cdk.CfnOutput(self, "KmsKeyArn", value=self.encryption_key.key_arn)
+        
+        self.parser_lambda = lambda_.Function(                                                                                                 self,
+              "EdiParserLambda",                                                                                                   
+              runtime=lambda_.Runtime.PYTHON_3_13,
+              handler="edi_parser.lambda_handler",                                                                                 
+              code=lambda_.Code.from_asset("src/lambda"),
+              role=self.parser_lambda_role,
+              timeout=Duration.seconds(300),
+              environment={
+                  "SQS_QUEUE_URL": self.queue.queue_url,
+              },
+          )
+
+        self.raw_bucket.add_event_notification(
+              s3.EventType.OBJECT_CREATED,
+              s3n.LambdaDestination(self.parser_lambda),
+          )
+
