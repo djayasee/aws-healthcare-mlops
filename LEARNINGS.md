@@ -461,4 +461,145 @@ Standard Python pattern for any script that can also be used as a module.
 
 ---
 
-*Steps 6+ coming soon...*
+---
+
+## Step 6 — Unit Tests with pytest (`src/lambda/test_edi_parser.py`)
+
+### Why write tests?
+`python -m py_compile` only checks syntax. Tests catch runtime bugs — wrong variable names,
+wrong logic, wrong output. In this step tests caught **5 bugs** in `edi_parser.py` that
+syntax checking completely missed.
+
+### Install pytest
+```bash
+pip install pytest
+pip install boto3  # needed locally since edi_parser.py imports it
+```
+Use `python -m pytest` instead of `pytest` directly to avoid PATH issues on Windows.
+
+### Test fixture
+```python
+SAMPLE_EDI = (
+    "CLM*CLAIM001*500.00***11:B:1~\n"
+    "NM1*IL*1*SMITH*JOHN****MI*MEM00001~\n"
+    ...
+)
+```
+A fixture is a controlled input with a known output. You feed it to your function and
+assert exactly what should come back.
+
+### Why one assert per test?
+Each test checks one thing. When a test fails, you know exactly what broke.
+A test checking 10 things at once only tells you "something broke."
+
+### Bugs caught by tests
+| Bug | Type |
+|---|---|
+| `cliam["claim_id"]` | Typo — variable named `cliam` instead of `claim` |
+| `claims["service_units"]` | Wrong variable — `claims` is the list, `claim` is the dict |
+| `patient_first_nmame` | Typo in key name |
+| `lambda_handler` indented inside `parse_edi_837` | Structural bug — function inside function, unreachable |
+| `"uft-8"` | Typo in encoding string |
+
+### Run tests
+```bash
+python -m pytest src/lambda/test_edi_parser.py -v
+```
+`-v` = verbose, shows each test name and pass/fail result.
+
+---
+
+## Step 7 — Deploy Lambda + S3 Trigger + Verify SQS
+
+### CDK changes to `infra/stack.py`
+
+#### New imports
+```python
+aws_lambda as lambda_,      # lambda_ with underscore — lambda is a reserved Python keyword
+aws_s3_notifications as s3n # wires S3 upload events to Lambda
+```
+
+#### Lambda function definition
+```python
+self.parser_lambda = lambda_.Function(
+    self, "EdiParserLambda",
+    runtime=lambda_.Runtime.PYTHON_3_13,
+    handler="edi_parser.lambda_handler",
+    code=lambda_.Code.from_asset("src/lambda"),
+    role=self.parser_lambda_role,
+    timeout=Duration.seconds(300),
+    environment={"SQS_QUEUE_URL": self.queue.queue_url},
+)
+```
+
+| Property | Why |
+|---|---|
+| `handler="edi_parser.lambda_handler"` | `filename.function_name` — Lambda runs `lambda_handler` in `edi_parser.py` |
+| `code=from_asset("src/lambda")` | Zips the entire `src/lambda/` folder and uploads to AWS |
+| `timeout=Duration.seconds(300)` | Must match SQS `visibility_timeout` |
+| `environment={"SQS_QUEUE_URL": ...}` | Passes queue URL as env variable — read via `os.environ` in Lambda |
+
+#### S3 trigger
+```python
+self.raw_bucket.add_event_notification(
+    s3.EventType.OBJECT_CREATED,
+    s3n.LambdaDestination(self.parser_lambda),
+)
+```
+Tells S3 to call the Lambda every time any file is uploaded.
+
+### Bug found: wrong IAM permission
+```python
+# Wrong — grants read from queue (consumer permission):
+self.queue.grant_consume_messages(self.parser_lambda_role)
+
+# Correct — grants write to queue (producer permission):
+self.queue.grant_send_messages(self.parser_lambda_role)
+```
+The parser Lambda **sends** messages to SQS, it doesn't consume them.
+CloudWatch logs showed the exact error: `sqs:sendmessage not authorized`.
+This is IAM least-privilege working correctly — Lambda had no permissions beyond what we granted.
+
+### Deploy commands
+```bash
+cdk deploy   # update stack with Lambda + S3 trigger
+```
+
+### Test the pipeline
+```bash
+# Upload a test EDI file
+aws s3 cp test_data/claim_001.edi s3://edi-raw-015932244777-us-east-1/claim_001.edi
+
+# Check SQS for the parsed message
+aws sqs receive-message \
+  --queue-url https://sqs.us-east-1.amazonaws.com/015932244777/edi-anomaly-queue \
+  --max-number-of-messages 1
+```
+
+### Result — parsed claim in SQS
+```json
+{
+  "claim_id": "1",
+  "claim_amount": "450.00",
+  "patient_last_name": "TAYLOR",
+  "patient_first_name": "EVA",
+  "provider_last_name": "PATEL",
+  "provider_first_name": "PRIYA",
+  "service_code": "99213",
+  "service_charge": "450.00",
+  "service_units": "3"
+}
+```
+
+### Full pipeline verified
+```
+EDI file uploaded to S3
+  → S3 fired OBJECT_CREATED event
+    → Lambda triggered
+      → EDI text parsed into JSON
+        → JSON message sent to SQS ✅
+```
+
+---
+
+*Steps 8+ coming soon...*
